@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartRouter — Device Discovery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0c0f;
+    --bg2:       #111318;
+    --bg3:       #181b22;
+    --border:    rgba(255,255,255,0.07);
+    --border2:   rgba(255,255,255,0.13);
+    --accent:    #00e5a0;
+    --accent2:   #0077ff;
+    --warn:      #ffb23f;
+    --danger:    #ff4757;
+    --text:      #e8eaf0;
+    --muted:     #5a5f70;
+    --muted2:    #8b909f;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Syne', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Subtle grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,160,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,160,0.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,12,15,0.92);
+    backdrop-filter: blur(12px);
+  }
+  .header-inner {
+    max-width: 1100px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 56px;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 16px; font-weight: 800; letter-spacing: -0.3px;
+  }
+  .logo-icon {
+    width: 28px; height: 28px;
+    border: 1.5px solid var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent);
+  }
+  .logo-icon svg { width: 14px; height: 14px; }
+  .logo-text { color: var(--text); }
+  .logo-text span { color: var(--accent); }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  .status-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .status-pill.online { border-color: rgba(0,229,160,0.4); color: var(--accent); }
+  .status-pill.scanning { border-color: rgba(255,178,63,0.4); color: var(--warn); animation: pulse-border 1s ease-in-out infinite; }
+  @keyframes pulse-border { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* ── Page title bar ── */
+  .page-header {
+    padding: 32px 0 24px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+  }
+  .page-title { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+  .page-title span { color: var(--accent); }
+  .page-sub { font-family: var(--mono); font-size: 12px; color: var(--muted2); margin-top: 4px; }
+
+  /* ── Metrics row ── */
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .metric-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: border-color .2s;
+  }
+  .metric-card:hover { border-color: var(--border2); }
+  .metric-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 6px;
+  }
+  .metric-value { font-size: 26px; font-weight: 800; color: var(--text); }
+  .metric-value.accent { color: var(--accent); }
+  .metric-value.warn   { color: var(--warn); }
+  .metric-value.danger { color: var(--danger); }
+
+  /* ── Controls bar ── */
+  .controls {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .search-wrap { position: relative; flex: 1; min-width: 200px; }
+  .search-wrap input {
+    width: 100%;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px 8px 34px;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .search-wrap input:focus { border-color: rgba(0,229,160,0.4); }
+  .search-wrap input::placeholder { color: var(--muted); }
+  .search-icon {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); width: 14px; height: 14px;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 700;
+  }
+  .btn-primary:hover { background: #00c98a; border-color: #00c98a; }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-ghost {
+    background: transparent;
+    border-color: var(--border2);
+    color: var(--muted2);
+  }
+  .btn-ghost:hover { border-color: var(--text); color: var(--text); }
+  .btn-danger-ghost {
+    background: transparent;
+    border-color: rgba(255,71,87,0.3);
+    color: var(--danger);
+  }
+  .btn-danger-ghost:hover { background: rgba(255,71,87,0.08); }
+
+  /* ── Device table ── */
+  .table-wrap {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead tr {
+    border-bottom: 1px solid var(--border2);
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 500;
+  }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background .12s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.025); }
+  tbody tr.blocked { opacity: .45; }
+
+  td { padding: 11px 14px; font-size: 13px; vertical-align: middle; }
+
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block;
+  }
+  .status-dot.online  { background: var(--accent); box-shadow: 0 0 6px rgba(0,229,160,.6); }
+  .status-dot.blocked { background: var(--danger); }
+  .status-dot.unknown { background: var(--warn); }
+
+  .mac-addr {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted2);
+    margin-top: 2px;
+  }
+  .device-name { font-weight: 600; font-size: 13px; }
+  .device-name.unnamed { color: var(--muted2); font-style: italic; font-weight: 400; }
+
+  .ip-addr { font-family: var(--mono); font-size: 12px; color: var(--accent2); }
+  .vendor-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    border: 1px solid var(--border2);
+    color: var(--muted2);
+    display: inline-block;
+  }
+
+  .actions { display: flex; align-items: center; gap: 6px; }
+  .icon-btn {
+    width: 28px; height: 28px;
+    background: transparent;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: var(--muted2);
+    transition: all .15s;
+  }
+  .icon-btn:hover { border-color: var(--text); color: var(--text); }
+  .icon-btn.block-btn:hover { border-color: var(--danger); color: var(--danger); }
+  .icon-btn svg { width: 13px; height: 13px; }
+
+  /* ── Empty state ── */
+  .empty {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  .empty .big { font-size: 36px; margin-bottom: 12px; opacity: .3; }
+
+  /* ── Edit modal ── */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.75);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s;
+  }
+  .overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    width: 460px; max-width: 95vw;
+    padding: 24px;
+    transform: translateY(12px);
+    transition: transform .2s;
+  }
+  .overlay.open .modal { transform: translateY(0); }
+  .modal-title { font-size: 17px; font-weight: 800; margin-bottom: 20px; }
+  .modal-title span { color: var(--accent); }
+
+  .form-group { margin-bottom: 14px; }
+  .form-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    margin-bottom: 5px;
+    display: block;
+  }
+  .form-input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 7px;
+    padding: 8px 11px;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .form-input:focus { border-color: rgba(0,229,160,.4); }
+
+  .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text);
+    z-index: 300;
+    transform: translateY(20px); opacity: 0;
+    transition: all .25s;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.ok    { border-color: rgba(0,229,160,.4); color: var(--accent); }
+  .toast.err   { border-color: rgba(255,71,87,.4); color: var(--danger); }
+
+  /* ── Scan animation ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin .7s linear infinite; }
+
+  /* ── Last scan bar ── */
+  .scan-bar {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .scan-bar span { color: var(--muted2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <circle cx="7" cy="7" r="5.5"/>
+          <circle cx="7" cy="7" r="2"/>
+          <path d="M7 1.5v1M7 11.5v1M1.5 7h1M11.5 7h1"/>
+        </svg>
+      </div>
+      <span class="logo-text">Smart<span>Router</span></span>
+    </div>
+    <div class="header-right">
+      <div class="status-pill online" id="hotspot-status">
+        <span class="dot"></span>Hotspot active
+      </div>
+      <div class="status-pill" id="scan-status" style="display:none">
+        <svg class="spin" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M5 1.5A3.5 3.5 0 0 1 8.5 5"/>
+        </svg>
+        Scanning…
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Device <span>Discovery</span></div>
+      <div class="page-sub" id="network-label">network: 192.168.1.0/24</div>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="metric-label">Total devices</div>
+      <div class="metric-value accent" id="m-total">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Online now</div>
+      <div class="metric-value" id="m-online">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Blocked</div>
+      <div class="metric-value danger" id="m-blocked">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Unknown vendor</div>
+      <div class="metric-value warn" id="m-unknown">—</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="search-wrap">
+      <svg class="search-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="5.5" cy="5.5" r="4"/><path d="M9.5 9.5l3 3" stroke-linecap="round"/>
+      </svg>
+      <input type="text" id="search-input" placeholder="Search by name, IP, MAC, vendor…" oninput="filterTable()">
+    </div>
+    <button class="btn btn-primary" id="scan-btn" onclick="triggerScan()">
+      <svg id="scan-icon" width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="6.5" cy="6.5" r="5"/>
+        <path d="M6.5 2.5V6.5l2.5 1.5"/>
+      </svg>
+      Scan network
+    </button>
+    <button class="btn btn-ghost" onclick="loadDevices()">
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 6.5A4.5 4.5 0 1 1 6.5 2M11 2v4H7"/>
+      </svg>
+      Refresh
+    </button>
+  </div>
+
+  <div class="scan-bar">Last scan: <span id="last-scan-time">never</span></div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:28px"></th>
+          <th>Device</th>
+          <th>IPv4</th>
+          <th>IPv6</th>
+          <th>Vendor</th>
+          <th>First seen</th>
+          <th>Last seen</th>
+          <th style="width:100px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="device-tbody">
+        <tr><td colspan="8"><div class="empty"><div class="big">◎</div>No devices yet — run a scan</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div class="overlay" id="edit-overlay" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Edit device <span id="modal-mac-label"></span></div>
+    <input type="hidden" id="edit-mac">
+
+    <div class="form-group">
+      <label class="form-label">Device name</label>
+      <input class="form-input" id="edit-name" placeholder="e.g. Smart Thermostat">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Model</label>
+      <input class="form-input" id="edit-model" placeholder="e.g. Nest Learning 3rd Gen">
+    </div>
+    <div class="form-group">
+      <label class="form-label">IPv6 address</label>
+      <input class="form-input" id="edit-ipv6" placeholder="fe80::…">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description / notes</label>
+      <input class="form-input" id="edit-desc" placeholder="Living room thermostat">
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveDevice()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+let allDevices = [];
+
+// ── Load devices from API ───────────────────────────────────────────────────
+async function loadDevices() {
+  try {
+    const res = await fetch('/api/devices');
+    allDevices = await res.json();
+    renderTable(allDevices);
+    updateMetrics(allDevices);
+  } catch(e) {
+    showToast('Failed to load devices', 'err');
+  }
+}
+
+// ── Trigger scan ────────────────────────────────────────────────────────────
+async function triggerScan() {
+  const btn  = document.getElementById('scan-btn');
+  const icon = document.getElementById('scan-icon');
+  const status = document.getElementById('scan-status');
+  btn.disabled = true;
+  icon.classList.add('spin');
+  status.style.display = 'flex';
+  document.getElementById('hotspot-status').style.display = 'none';
+
+  try {
+    const res  = await fetch('/api/devices/scan', { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      await loadDevices();
+      document.getElementById('last-scan-time').textContent = new Date().toLocaleTimeString();
+      showToast(`Scan complete — ${data.found} device(s) found`, 'ok');
+    } else {
+      showToast(data.message || 'Scan failed', 'err');
+    }
+  } catch(e) {
+    showToast('Scan request failed', 'err');
+  } finally {
+    btn.disabled = false;
+    icon.classList.remove('spin');
+    status.style.display = 'none';
+    document.getElementById('hotspot-status').style.display = 'flex';
+  }
+}
+
+// ── Render table ────────────────────────────────────────────────────────────
+function renderTable(devices) {
+  const tbody = document.getElementById('device-tbody');
+  if (!devices.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="big">◎</div>No devices found</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = devices.map(d => {
+    const statusClass = d.is_blocked ? 'blocked' : 'online';
+    const nameHtml = d.name
+      ? `<div class="device-name">${esc(d.name)}</div>`
+      : `<div class="device-name unnamed">Unnamed device</div>`;
+    const modelHtml = d.model ? `<div style="font-size:11px;color:var(--muted2)">${esc(d.model)}</div>` : '';
+    const ipv6 = d.ipv6 || '<span style="color:var(--muted)">—</span>';
+    const vendor = d.vendor && d.vendor !== 'Unknown'
+      ? `<span class="vendor-tag">${esc(d.vendor)}</span>`
+      : `<span style="color:var(--warn);font-size:11px;font-family:var(--mono)">Unknown</span>`;
+    const fs = d.first_seen ? d.first_seen.replace('T',' ') : '—';
+    const ls = d.last_seen  ? d.last_seen.replace('T',' ')  : '—';
+    const blockLabel = d.is_blocked ? 'Unblock' : 'Block';
+    const blockTitle = d.is_blocked ? 'Unblock device' : 'Block device';
+
+    return `<tr class="${d.is_blocked ? 'blocked' : ''}" data-mac="${esc(d.mac)}">
+      <td><span class="status-dot ${statusClass}"></span></td>
+      <td>
+        ${nameHtml}${modelHtml}
+        <div class="mac-addr">${esc(d.mac)}</div>
+      </td>
+      <td><span class="ip-addr">${esc(d.ipv4 || '—')}</span></td>
+      <td><span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">${ipv6}</span></td>
+      <td>${vendor}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${fs}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${ls}</td>
+      <td>
+        <div class="actions">
+          <button class="icon-btn" title="Edit device" onclick="openEdit('${esc(d.mac)}')">
+            <svg viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+              <path d="M9 2l2 2-6 6H3V8l6-6z"/>
+            </svg>
+          </button>
+          <button class="icon-btn block-btn" title="${blockTitle}" onclick="toggleBlock('${esc(d.mac)}')">
+            <svg viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+              <circle cx="6.5" cy="6.5" r="5"/>
+              <path d="M3 3l7 7"/>
+            </svg>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Search/filter ───────────────────────────────────────────────────────────
+function filterTable() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  if (!q) { renderTable(allDevices); return; }
+  const filtered = allDevices.filter(d =>
+    (d.name    || '').toLowerCase().includes(q) ||
+    (d.mac     || '').toLowerCase().includes(q) ||
+    (d.ipv4    || '').toLowerCase().includes(q) ||
+    (d.vendor  || '').toLowerCase().includes(q) ||
+    (d.model   || '').toLowerCase().includes(q)
+  );
+  renderTable(filtered);
+}
+
+// ── Metrics ─────────────────────────────────────────────────────────────────
+function updateMetrics(devices) {
+  document.getElementById('m-total').textContent   = devices.length;
+  document.getElementById('m-online').textContent  = devices.filter(d => !d.is_blocked).length;
+  document.getElementById('m-blocked').textContent = devices.filter(d => d.is_blocked).length;
+  document.getElementById('m-unknown').textContent = devices.filter(d => !d.vendor || d.vendor === 'Unknown').length;
+}
+
+// ── Edit modal ───────────────────────────────────────────────────────────────
+function openEdit(mac) {
+  const d = allDevices.find(x => x.mac === mac);
+  if (!d) return;
+  document.getElementById('edit-mac').value         = d.mac;
+  document.getElementById('modal-mac-label').textContent = d.mac;
+  document.getElementById('edit-name').value        = d.name  || '';
+  document.getElementById('edit-model').value       = d.model || '';
+  document.getElementById('edit-ipv6').value        = d.ipv6  || '';
+  document.getElementById('edit-desc').value        = d.description || '';
+  document.getElementById('edit-overlay').classList.add('open');
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('edit-overlay'))
+    document.getElementById('edit-overlay').classList.remove('open');
+}
+
+async function saveDevice() {
+  const mac = document.getElementById('edit-mac').value;
+  const body = {
+    name:        document.getElementById('edit-name').value.trim(),
+    model:       document.getElementById('edit-model').value.trim(),
+    ipv6:        document.getElementById('edit-ipv6').value.trim(),
+    description: document.getElementById('edit-desc').value.trim(),
+  };
+  try {
+    await fetch(`/api/devices/${encodeURIComponent(mac)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    document.getElementById('edit-overlay').classList.remove('open');
+    await loadDevices();
+    showToast('Device updated', 'ok');
+  } catch(e) {
+    showToast('Update failed', 'err');
+  }
+}
+
+// ── Block toggle ─────────────────────────────────────────────────────────────
+async function toggleBlock(mac) {
+  try {
+    const res  = await fetch(`/api/devices/${encodeURIComponent(mac)}/block`, { method: 'POST' });
+    const data = await res.json();
+    await loadDevices();
+    showToast(data.blocked ? 'Device blocked' : 'Device unblocked', 'ok');
+  } catch(e) {
+    showToast('Action failed', 'err');
+  }
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+let _toastTimer;
+function showToast(msg, type='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── Util ─────────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+loadDevices();
+</script>
+</body>
+</html>

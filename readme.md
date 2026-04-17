@@ -90,10 +90,3 @@ scan_history(id, scanned_at, devices_found)
 ```
 
 ---
-
-## Upcoming modules
-
-- [ ] Module 2: Packet Capture (Scapy → PCAP files)
-- [ ] Module 3: Firewall (iptables whitelist)
-- [ ] Module 4: IPS / Anomaly Detection (rate monitor + throttle)
-- [ ] Module 5: Logs & Visualization (Chart.js history graphs)
