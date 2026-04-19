@@ -1,15 +1,5 @@
-"""
-Smart Router — Flask Application
-=================================
-Entry point. Registers all routes for the Device Discovery module.
-
-Run:
-    sudo python app.py          # root needed for ARP scanning
-    or
-    sudo flask run --host=0.0.0.0
-"""
-
 from flask import Flask, jsonify, request, render_template, abort
+
 from modules.device_discovery import (
     init_db,
     run_scan,
@@ -22,38 +12,22 @@ from modules.device_discovery import (
 
 app = Flask(__name__)
 
-# ─── Startup ──────────────────────────────────────────────────────────────────
-
 init_db()
 
-# Change this to match your hotspot network range, e.g.:
-#   Windows hotspot:  192.168.137.0/24
-#   macOS hotspot:    192.168.2.0/24
-#   Linux hostapd:    10.0.0.0/24
-HOTSPOT_NETWORK = "192.168.1.0/24"
-
-
-# ─── Page routes ──────────────────────────────────────────────────────────────
+HOTSPOT_NETWORK = "192.168.137.0/24"
 
 @app.route("/")
 def index():
     return render_template("index.html")
 
-
-# ─── API: Devices ─────────────────────────────────────────────────────────────
-
 @app.route("/api/devices", methods=["GET"])
 def api_get_devices():
-    """Return all devices as JSON."""
     return jsonify(get_all_devices())
 
 
 @app.route("/api/devices/scan", methods=["POST"])
 def api_scan():
-    """
-    Trigger an immediate scan.
-    Optional JSON body: { "network": "192.168.1.0/24" }
-    """
+   
     body = request.get_json(silent=True) or {}
     network = body.get("network", HOTSPOT_NETWORK)
     try:
@@ -81,15 +55,50 @@ def api_update_device(mac: str):
 
 @app.route("/api/devices/<mac>/block", methods=["POST"])
 def api_toggle_block(mac: str):
-    """Toggle the blocked state for a device."""
     mac = mac.upper()
     new_state = toggle_block(mac)
     return jsonify({"status": "ok", "blocked": new_state})
 
 
-# ─── API: Auto-scan control ───────────────────────────────────────────────────
+#  API: Auto-scan control 
 
-@app.route("/api/autoscan/start", methods=["POST"])
+@app.route("/api/hotspot/status", methods=["GET"])
+def api_hotspot_status():
+    
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["netsh", "wlan", "show", "hostednetwork"],
+            capture_output=True, text=True, timeout=5
+        )
+        output = result.stdout.lower()
+        if "started" in output:
+            return jsonify({"active": True})
+        result2 = subprocess.run(
+            ["netsh", "wlan", "show", "settings"],
+            capture_output=True, text=True, timeout=5
+        )
+        import scapy.all as scapy
+        HOTSPOT_IFACE = "Local Area Connection* 4"
+        ifaces = scapy.conf.ifaces
+        for i in ifaces:
+            if ifaces[i].name == HOTSPOT_IFACE:
+                ip = ifaces[i].ip
+                if ip and ip != "0.0.0.0":
+
+                    from scapy.all import ARP, Ether, srp
+                    arp_req = ARP(pdst="192.168.137.2/30")
+                    broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
+                    answered, _ = srp(broadcast/arp_req, iface=HOTSPOT_IFACE, timeout=1, verbose=False)
+                    gw = ARP(pdst="192.168.137.1")
+                    ans, _ = srp(Ether(dst="ff:ff:ff:ff:ff:ff")/gw, iface=HOTSPOT_IFACE, timeout=1, verbose=False)
+                    return jsonify({"active": True})
+        return jsonify({"active": False})
+    except Exception as e:
+        return jsonify({"active": False, "error": str(e)})
+
+
+
 def api_start_autoscan():
     body = request.get_json(silent=True) or {}
     interval = int(body.get("interval", 30))
@@ -103,8 +112,6 @@ def api_stop_autoscan():
     stop_auto_scan()
     return jsonify({"status": "ok"})
 
-
-# ─── Run ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

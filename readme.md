@@ -33,7 +33,7 @@ HOTSPOT_NETWORK = "192.168.1.0/24"
 |----------------|------------------------|
 | Windows 10/11  | `192.168.137.0/24`     |
 | macOS          | `192.168.2.0/24`       |
-| Linux hostapd  | `10.0.0.0/24`          |
+| Linux hostapd  | `192.168.137.0/24`          |
 
 ### 3. Run (must be root for ARP scanning)
 
