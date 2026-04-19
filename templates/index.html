@@ -212,6 +212,10 @@
 <nav class="navbar mb-4">
   <span class="navbar-brand">Smart<span>Router</span></span>
   <div class="d-flex align-items-center gap-3">
+    <div class="d-flex gap-1">
+      <a href="/" style="font-size:13px;padding:4px 12px;border-radius:5px;background:#2a2a2e;color:#fff;text-decoration:none;">Devices</a>
+      <a href="/capture" style="font-size:13px;padding:4px 12px;border-radius:5px;color:#adb5bd;text-decoration:none;">Capture</a>
+    </div>
     <span class="status-badge" id="hotspot-badge"><span class="status-dot"></span><span id="hotspot-text">Hotspot inactive</span></span>
     <button id="toggle-btn" onclick="toggleHotspot()" style="font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid #3a3a3f;background:#2a2a2e;color:#d8d8d8;cursor:pointer;">Turn On</button>
   </div>
@@ -347,7 +351,7 @@ let hotspotActive = false;
 const editModal = new bootstrap.Modal(document.getElementById('editModal'));
 const toastEl   = new bootstrap.Toast(document.getElementById('toast'), { delay: 2500 });
 
-// ── Hotspot manual toggle ────────────────────────────────────────────────────
+// hotspot toggle
 function toggleHotspot() {
   hotspotActive = !hotspotActive;
   const badge  = document.getElementById('hotspot-badge');
@@ -386,7 +390,7 @@ function clearTable() {
   document.getElementById('last-scan-time').textContent = 'never';
 }
 
-// ── Load devices from last scan only (called after scan, not on page load) ──
+// load devices after scan
 async function loadDevices() {
   try {
     const res = await fetch('/api/devices');
@@ -398,7 +402,7 @@ async function loadDevices() {
   }
 }
 
-// ── Scan ─────────────────────────────────────────────────────────────────────
+// trigger network scan
 async function triggerScan() {
   if (!hotspotActive) {
     showToast('Mark hotspot as active first', 'warning');
@@ -426,7 +430,7 @@ async function triggerScan() {
   }
 }
 
-// ── Render table ─────────────────────────────────────────────────────────────
+// render device rows in table
 function renderTable(devices) {
   const tbody = document.getElementById('device-tbody');
   document.getElementById('device-count').textContent = devices.length ? `${devices.length} device(s)` : '';
@@ -464,7 +468,7 @@ function renderTable(devices) {
   }).join('');
 }
 
-// ── Search filter ─────────────────────────────────────────────────────────────
+// filter table by search input
 function filterTable() {
   const q = document.getElementById('search-input').value.toLowerCase();
   if (!q) { renderTable(allDevices); return; }
@@ -477,7 +481,7 @@ function filterTable() {
   ));
 }
 
-// ── Metrics ───────────────────────────────────────────────────────────────────
+// update metric cards
 function updateMetrics(devices) {
   document.getElementById('m-total').textContent   = devices.length;
   document.getElementById('m-online').textContent  = devices.filter(d => !d.is_blocked).length;
@@ -485,7 +489,7 @@ function updateMetrics(devices) {
   document.getElementById('m-unknown').textContent = devices.filter(d => !d.vendor || d.vendor === 'Unknown').length;
 }
 
-// ── Edit modal ────────────────────────────────────────────────────────────────
+// open edit modal for a device
 function openEdit(mac) {
   const d = allDevices.find(x => x.mac === mac);
   if (!d) return;
@@ -517,7 +521,7 @@ async function saveDevice() {
   } catch(e) { showToast('Update failed', 'danger'); }
 }
 
-// ── Block toggle ──────────────────────────────────────────────────────────────
+// block or unblock a device
 async function toggleBlock(mac) {
   try {
     const res  = await fetch(`/api/devices/${encodeURIComponent(mac)}/block`, { method: 'POST' });
@@ -527,7 +531,7 @@ async function toggleBlock(mac) {
   } catch(e) { showToast('Action failed', 'danger'); }
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
+// show toast notification
 function showToast(msg, type='success') {
   const t = document.getElementById('toast');
   t.className = `toast align-items-center text-bg-${type} border-0`;
@@ -535,12 +539,12 @@ function showToast(msg, type='success') {
   toastEl.show();
 }
 
-// ── Util ──────────────────────────────────────────────────────────────────────
+// escape html special chars
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Init — start with empty table, hotspot off ────────────────────────────────
+// page init - start with scan button disabled
 document.getElementById('scan-btn').disabled = true;
 
 </script>

@@ -1,2 +1,4 @@
 modules/__pycache__/device_discovery.cpython-313.pyc
 smart_router.db
+templates/capture.html
+modules/__pycache__/packet_capture.cpython-313.pyc
