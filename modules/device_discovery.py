@@ -1,4 +1,3 @@
-
 import sqlite3
 import threading
 import time
@@ -8,7 +7,6 @@ from datetime import datetime
 from scapy.all import ARP, Ether, srp
 import socket
 import subprocess
-
 
 DB_PATH = "smart_router.db"
 
@@ -40,11 +38,9 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 _vendor_cache = {}
 
 def lookup_vendor(mac: str) -> str:
-    
     mac_prefix = mac.upper().replace(":", "")[:6]
     if mac_prefix in _vendor_cache:
         return _vendor_cache[mac_prefix]
@@ -65,7 +61,6 @@ def lookup_hostname(ip: str) -> str | None:
         return hostname
     except Exception:
         return None
-    
 
 def lookup_ipv6(ip: str) -> str | None:
     try:
@@ -80,20 +75,15 @@ def lookup_ipv6(ip: str) -> str | None:
         pass
     return None
 
-
 def arp_scan(network: str = "192.168.137.0/24") -> list[dict]:
-    
     HOTSPOT_IFACE = "Local Area Connection* 4"
-
     arp_req = ARP(pdst=network)
     broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
     packet = broadcast / arp_req
-
     answered, _ = srp(packet, iface=HOTSPOT_IFACE, timeout=2, verbose=False)
-
     devices = []
     for _, received in answered:
-        if received.psrc == "192.168.137.1": 
+        if received.psrc == "192.168.137.1":
             continue
         devices.append({
             "ip":  received.psrc,
@@ -101,14 +91,9 @@ def arp_scan(network: str = "192.168.137.0/24") -> list[dict]:
         })
     return devices
 
-
-#  Main discovery logic 
-
 def run_scan(network: str = "192.168.137.0/24") -> list[dict]:
-
-    print(f"[{datetime.now():%H:%M:%S}] Scanning {network} …")
+    print(f"[{datetime.now():%H:%M:%S}] Scanning {network}")
     raw_devices = arp_scan(network)
-
     enriched = []
     for d in raw_devices:
         vendor   = lookup_vendor(d["mac"])
@@ -116,19 +101,15 @@ def run_scan(network: str = "192.168.137.0/24") -> list[dict]:
         d["vendor"]   = vendor
         d["hostname"] = hostname
         enriched.append(d)
-
     _upsert_devices(enriched)
     _log_scan(len(enriched))
-
     print(f"[{datetime.now():%H:%M:%S}] Found {len(enriched)} device(s).")
     return enriched
-
 
 def _upsert_devices(devices: list[dict]):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     now = datetime.now().isoformat(timespec="seconds")
-
     for d in devices:
         c.execute("""
             INSERT INTO devices (mac, ipv4, vendor, name, first_seen, last_seen)
@@ -141,10 +122,8 @@ def _upsert_devices(devices: list[dict]):
                                  THEN excluded.name ELSE name END,
                 last_seen = excluded.last_seen
         """, (d["mac"], d["ip"], d["vendor"], d.get("hostname"), now, now))
-
     conn.commit()
     conn.close()
-
 
 def _log_scan(count: int):
     conn = sqlite3.connect(DB_PATH)
@@ -156,16 +135,12 @@ def _log_scan(count: int):
     conn.commit()
     conn.close()
 
-
-#  Background auto-scan 
-
 _scan_thread = None
 _scan_stop   = threading.Event()
 
 def start_auto_scan(network: str = "192.168.137.0/24", interval: int = 30):
     global _scan_thread
     _scan_stop.clear()
-
     def _loop():
         while not _scan_stop.is_set():
             try:
@@ -173,19 +148,13 @@ def start_auto_scan(network: str = "192.168.137.0/24", interval: int = 30):
             except Exception as e:
                 print(f"[scan error] {e}")
             _scan_stop.wait(interval)
-
     _scan_thread = threading.Thread(target=_loop, daemon=True, name="auto-scan")
     _scan_thread.start()
-    print(f"Auto-scan started (every {interval}s on {network})")
 
 def stop_auto_scan():
     _scan_stop.set()
     if _scan_thread:
         _scan_thread.join(timeout=5)
-    print("Auto-scan stopped.")
-
-
-#  DB helpers
 
 def get_all_devices() -> list[dict]:
     conn = sqlite3.connect(DB_PATH)
@@ -196,22 +165,17 @@ def get_all_devices() -> list[dict]:
     conn.close()
     return [dict(r) for r in rows]
 
-
 def update_device(mac: str, fields: dict):
-    
     allowed = {"name", "model", "description", "ipv6"}
     safe = {k: v for k, v in fields.items() if k in allowed}
     if not safe:
         return
-
     set_clause = ", ".join(f"{k} = ?" for k in safe)
     values = list(safe.values()) + [mac]
-
     conn = sqlite3.connect(DB_PATH)
     conn.execute(f"UPDATE devices SET {set_clause} WHERE mac = ?", values)
     conn.commit()
     conn.close()
-
 
 def toggle_block(mac: str) -> bool:
     conn = sqlite3.connect(DB_PATH)
