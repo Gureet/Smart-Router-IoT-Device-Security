@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Firewall{% endblock %}
+
+{% block extra_css %}
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-family: monospace; display: inline-block; }
+  .tag-enabled  { background: #1a2e1a; color: #6abf6a; border: 1px solid #2a5a2a; }
+  .tag-disabled { background: #252528; color: #666;    border: 1px solid #2a2a2e; }
+  .tag-proto    { background: #252528; color: #adb5bd; border: 1px solid #2a2a2e; }
+  .tag-active   { background: #1a2e1a; color: #6abf6a; border: 1px solid #2a5a2a; }
+  .tag-inactive { background: #2e1a1a; color: #c87070; border: 1px solid #5a2a2a; }
+  .status-row {
+    background: #1c1c20; border: 1px solid #2a2a2e; border-radius: 8px;
+    padding: 14px 16px; display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 20px;
+  }
+  .status-label { font-size: 13px; color: #adb5bd; }
+  .status-label strong { color: #d8d8d8; font-weight: 500; }
+  tr.disabled-row { opacity: 0.45; }
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-4">
+  <div class="page-title">Firewall</div>
+  <div class="page-sub">Whitelist-based packet filtering using WinDivert (kernel-level)</div>
+</div>
+
+<div class="status-row">
+  <div>
+    <div class="status-label">
+      <strong>Packet Filter</strong> — intercepts all forwarded hotspot traffic at kernel level.
+      Packets matching whitelist rules pass through. All others are dropped.
+    </div>
+    <div style="font-size:11px;color:#555;margin-top:4px;">
+      Tip: add a rule for DNS (port 53, UDP, any destination) to allow domain resolution.
+    </div>
+  </div>
+  <div class="d-flex align-items-center gap-2" style="flex-shrink:0;">
+    <span id="filter-badge" class="tag tag-inactive">Stopped</span>
+    <button class="btn-primary-dark" id="filter-btn" onclick="toggleFilter()" style="padding:6px 16px;">Start Filter</button>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header"><span>Add Whitelist Rule</span></div>
+  <div style="padding:16px;">
+    <div class="row g-3">
+      <div class="col-md-2">
+        <label class="form-label">Device IP</label>
+        <select class="form-select" id="sel-device"><option value="">Loading...</option></select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Destination IP</label>
+        <input type="text" class="form-control" id="inp-dest-ip" placeholder="e.g. 8.8.8.8 or any">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Port</label>
+        <input type="text" class="form-control" id="inp-port" placeholder="e.g. 443 or any">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Protocol</label>
+        <select class="form-select" id="sel-protocol">
+          <option value="TCP">TCP</option>
+          <option value="UDP">UDP</option>
+          <option value="ANY">ANY</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Direction</label>
+        <select class="form-select" id="sel-direction">
+          <option value="out">Outbound</option>
+          <option value="in">Inbound</option>
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button class="btn-primary-dark w-100" onclick="addRule()">+ Add Rule</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span>Whitelist Rules</span>
+    <div class="d-flex gap-2 align-items-center">
+      <span id="rule-count" style="font-size:12px;font-weight:400;color:#555;"></span>
+      <button class="btn-sm-dark danger" onclick="cleanupAll()">Remove All</button>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Device IP</th>
+          <th>Destination IP</th>
+          <th>Port</th>
+          <th>Protocol</th>
+          <th>Direction</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th style="width:100px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rules-tbody">
+        <tr><td colspan="8"><div class="empty-state">No rules yet — add one above</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block page_script %}
+<script>
+let filterActive = false;
+
+// load filter status
+async function loadFilterStatus() {
+  try {
+    const res  = await fetch('/api/firewall/filter/status');
+    const data = await res.json();
+    filterActive = data.active;
+    updateFilterUI();
+  } catch(e) {}
+}
+
+function updateFilterUI() {
+  const badge = document.getElementById('filter-badge');
+  const btn   = document.getElementById('filter-btn');
+  if (filterActive) {
+    badge.className   = 'tag tag-active';
+    badge.textContent = 'Running';
+    btn.textContent   = 'Stop Filter';
+    btn.style.borderColor = '#7a2a2a';
+    btn.style.color       = '#c87070';
+  } else {
+    badge.className   = 'tag tag-inactive';
+    badge.textContent = 'Stopped';
+    btn.textContent   = 'Start Filter';
+    btn.style.borderColor = '';
+    btn.style.color       = '';
+  }
+}
+
+async function toggleFilter() {
+  const endpoint = filterActive
+    ? '/api/firewall/filter/stop'
+    : '/api/firewall/filter/start';
+  try {
+    const res  = await fetch(endpoint, { method: 'POST' });
+    const data = await res.json();
+    filterActive = data.active;
+    updateFilterUI();
+    showToast(filterActive ? 'Packet filter started' : 'Packet filter stopped', 'success');
+  } catch(e) { showToast('Request failed', 'danger'); }
+}
+
+// load devices
+async function loadDevices() {
+  try {
+    const res  = await fetch('/api/devices');
+    const devs = await res.json();
+    const opts = devs.map(d => {
+      const label = d.name ? `${d.name} (${d.ipv4})` : d.ipv4;
+      return `<option value="${esc(d.ipv4)}">${esc(label)}</option>`;
+    }).join('');
+    document.getElementById('sel-device').innerHTML = `<option value="">Select device...</option>${opts}`;
+  } catch(e) {}
+}
+
+// load rules
+async function loadRules() {
+  try {
+    const res   = await fetch('/api/firewall/rules');
+    const rules = await res.json();
+    const tbody = document.getElementById('rules-tbody');
+    document.getElementById('rule-count').textContent = rules.length ? `${rules.length} rule(s)` : '';
+    if (!rules.length) {
+      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state">No rules yet — add one above</div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rules.map(r => {
+      const statusTag   = r.enabled ? `<span class="tag tag-enabled">enabled</span>` : `<span class="tag tag-disabled">disabled</span>`;
+      const toggleLabel = r.enabled ? 'Disable' : 'Enable';
+      const created     = r.created_at ? r.created_at.replace('T', ' ') : '—';
+      const dirLabel    = r.direction === 'out' ? 'Outbound' : 'Inbound';
+      return `<tr class="${r.enabled ? '' : 'disabled-row'}">
+        <td><span class="ip-addr">${esc(r.device_ip)}</span></td>
+        <td><span class="ip-addr">${esc(r.dest_ip)}</span></td>
+        <td><span style="font-family:monospace;font-size:12px">${esc(r.dest_port)}</span></td>
+        <td><span class="tag tag-proto">${esc(r.protocol)}</span></td>
+        <td style="font-size:12px;color:#adb5bd">${dirLabel}</td>
+        <td>${statusTag}</td>
+        <td style="font-family:monospace;font-size:11px;color:#555">${created}</td>
+        <td>
+          <div class="d-flex gap-1">
+            <button class="btn-sm-dark warn" onclick="toggleRule(${r.id})">${toggleLabel}</button>
+            <button class="btn-sm-dark danger" onclick="deleteRule(${r.id})">&#10005;</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) { showToast('Failed to load rules', 'danger'); }
+}
+
+// add rule
+async function addRule() {
+  const device_ip = document.getElementById('sel-device').value;
+  const dest_ip   = document.getElementById('inp-dest-ip').value.trim();
+  const dest_port = document.getElementById('inp-port').value.trim() || 'any';
+  const protocol  = document.getElementById('sel-protocol').value;
+  const direction = document.getElementById('sel-direction').value;
+  if (!device_ip) { showToast('Select a device', 'warning'); return; }
+  if (!dest_ip)   { showToast('Enter destination IP', 'warning'); return; }
+  try {
+    const res  = await fetch('/api/firewall/rules', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ device_ip, dest_ip, dest_port, protocol, direction })
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      showToast('Rule added', 'success');
+      document.getElementById('inp-dest-ip').value = '';
+      document.getElementById('inp-port').value    = '';
+      loadRules();
+    } else {
+      showToast(data.message || 'Failed', 'danger');
+    }
+  } catch(e) { showToast('Request failed', 'danger'); }
+}
+
+async function toggleRule(id) {
+  try {
+    const res  = await fetch(`/api/firewall/rules/${id}/toggle`, { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'ok') loadRules();
+    else showToast(data.message || 'Failed', 'danger');
+  } catch(e) { showToast('Request failed', 'danger'); }
+}
+
+async function deleteRule(id) {
+  if (!confirm('Remove this rule?')) return;
+  try {
+    await fetch(`/api/firewall/rules/${id}`, { method: 'DELETE' });
+    showToast('Rule removed', 'success');
+    loadRules();
+  } catch(e) { showToast('Request failed', 'danger'); }
+}
+
+async function cleanupAll() {
+  if (!confirm('Remove ALL rules?')) return;
+  try {
+    await fetch('/api/firewall/cleanup', { method: 'POST' });
+    showToast('All rules removed', 'success');
+    loadRules();
+  } catch(e) { showToast('Request failed', 'danger'); }
+}
+
+// page init
+loadDevices();
+loadRules();
+loadFilterStatus();
+</script>
+{% endblock %}

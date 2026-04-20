@@ -9,18 +9,30 @@ from modules.packet_capture import (
     get_all_sessions, get_session, list_pcap_files, delete_pcap, CAPTURES_DIR,
 )
 
+from modules.firewall import (
+    init_firewall_db, get_all_rules, add_rule, delete_rule,
+    toggle_rule, cleanup_all_rules,
+    start_filter, stop_filter, get_filter_status,
+)
+
 app = Flask(__name__)
 init_db()
+init_firewall_db()
 
 HOTSPOT_NETWORK = "192.168.137.0/24"
+_hotspot_active = False
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", active_page="devices")
 
 @app.route("/capture")
 def capture_page():
-    return render_template("capture.html")
+    return render_template("capture.html", active_page="capture")
+
+@app.route("/firewall")
+def firewall_page():
+    return render_template("firewall.html", active_page="firewall")
 
 @app.route("/api/devices", methods=["GET"])
 def api_get_devices():
@@ -98,7 +110,64 @@ def api_delete_pcap(filename):
 def api_download_pcap(filename):
     return send_from_directory(CAPTURES_DIR, filename, as_attachment=True)
 
-@app.route("/api/autoscan/start", methods=["POST"])
+@app.route("/api/firewall/rules", methods=["GET"])
+def api_get_rules():
+    return jsonify(get_all_rules())
+
+@app.route("/api/firewall/rules", methods=["POST"])
+def api_add_rule():
+    body      = request.get_json(silent=True) or {}
+    device_ip = body.get("device_ip", "")
+    dest_ip   = body.get("dest_ip", "")
+    dest_port = body.get("dest_port", "any")
+    protocol  = body.get("protocol", "TCP")
+    direction = body.get("direction", "out")
+    if not device_ip or not dest_ip:
+        return jsonify({"status": "error", "message": "device_ip and dest_ip required"}), 400
+    ok, msg = add_rule(device_ip, dest_ip, dest_port, protocol, direction)
+    return jsonify({"status": "ok" if ok else "error", "message": msg})
+
+@app.route("/api/firewall/rules/<int:rule_id>", methods=["DELETE"])
+def api_delete_rule(rule_id):
+    ok, msg = delete_rule(rule_id)
+    return jsonify({"status": "ok" if ok else "error", "message": msg})
+
+@app.route("/api/firewall/rules/<int:rule_id>/toggle", methods=["POST"])
+def api_toggle_rule(rule_id):
+    ok, msg = toggle_rule(rule_id)
+    return jsonify({"status": "ok" if ok else "error", "message": msg})
+
+@app.route("/api/firewall/filter/start", methods=["POST"])
+def api_filter_start():
+    start_filter()
+    return jsonify({"status": "ok", "active": True})
+
+@app.route("/api/firewall/filter/stop", methods=["POST"])
+def api_filter_stop():
+    stop_filter()
+    return jsonify({"status": "ok", "active": False})
+
+@app.route("/api/firewall/filter/status", methods=["GET"])
+def api_filter_status():
+    return jsonify({"active": get_filter_status()})
+
+@app.route("/api/firewall/cleanup", methods=["POST"])
+def api_cleanup_rules():
+    cleanup_all_rules()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/hotspot/status", methods=["GET"])
+def api_hotspot_status():
+    return jsonify({"active": _hotspot_active})
+
+@app.route("/api/hotspot/toggle", methods=["POST"])
+def api_hotspot_toggle():
+    global _hotspot_active
+    _hotspot_active = not _hotspot_active
+    return jsonify({"active": _hotspot_active})
+
+
 def api_start_autoscan():
     body = request.get_json(silent=True) or {}
     interval = int(body.get("interval", 30))

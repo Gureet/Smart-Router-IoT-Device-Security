@@ -14,7 +14,7 @@ def _ensure_dir():
     os.makedirs(CAPTURES_DIR, exist_ok=True)
 
 def start_capture(mac: str, ip: str, filename: str,
-                  max_packets: int = None, max_duration: int = None) -> str:
+                  max_packets: int | None = None, max_duration: int | None = None) -> str:
     _ensure_dir()
     session_id = f"{mac.replace(':','')}_{int(time.time())}"
     filepath   = os.path.join(CAPTURES_DIR, filename if filename.endswith(".pcap") else filename + ".pcap")
