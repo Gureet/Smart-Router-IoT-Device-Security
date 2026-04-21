@@ -1,26 +1,33 @@
-from flask import Flask, jsonify, request, render_template, abort, send_from_directory
+from flask import Flask, jsonify, request, render_template, abort, send_from_directory, redirect
 from datetime import datetime
 from modules.device_discovery import (
     init_db, run_scan, get_all_devices, update_device, toggle_block,
-    start_auto_scan, stop_auto_scan,
 )
 from modules.packet_capture import (
     start_capture, pause_capture, resume_capture, stop_capture,
-    get_all_sessions, get_session, list_pcap_files, delete_pcap, CAPTURES_DIR,
+    get_all_sessions, list_pcap_files, delete_pcap, CAPTURES_DIR,
 )
-
 from modules.firewall import (
     init_firewall_db, get_all_rules, add_rule, delete_rule,
     toggle_rule, cleanup_all_rules,
     start_filter, stop_filter, get_filter_status,
 )
+from modules.ips import (
+    init_ips_db, get_all_ips_configs, set_ips_config,
+    get_alerts, delete_alert, clear_alerts,
+    get_traffic_history, delete_history,
+    get_all_settings, set_setting,
+    start_monitor, stop_monitor, get_monitor_status,
+    start_traffic_collector,
+)
 
 app = Flask(__name__)
 init_db()
 init_firewall_db()
+init_ips_db()
+start_traffic_collector()  # always-on, separate from IPS monitor
 
 HOTSPOT_NETWORK = "192.168.137.0/24"
-_hotspot_active = False
 
 @app.route("/")
 def index():
@@ -33,6 +40,14 @@ def capture_page():
 @app.route("/firewall")
 def firewall_page():
     return render_template("firewall.html", active_page="firewall")
+
+@app.route("/ips")
+def ips_page():
+    return render_template("ips.html", active_page="ips")
+
+@app.route("/logs")
+def logs_page():
+    return render_template("logs.html", active_page="logs")
 
 @app.route("/api/devices", methods=["GET"])
 def api_get_devices():
@@ -64,6 +79,7 @@ def api_toggle_block(mac: str):
     mac = mac.upper()
     new_state = toggle_block(mac)
     return jsonify({"status": "ok", "blocked": new_state})
+
 
 @app.route("/api/capture/start", methods=["POST"])
 def api_capture_start():
@@ -149,7 +165,7 @@ def api_filter_stop():
 
 @app.route("/api/firewall/filter/status", methods=["GET"])
 def api_filter_status():
-    return jsonify({"active": get_filter_status()})
+    return jsonify(get_filter_status())
 
 @app.route("/api/firewall/cleanup", methods=["POST"])
 def api_cleanup_rules():
@@ -157,28 +173,87 @@ def api_cleanup_rules():
     return jsonify({"status": "ok"})
 
 
-@app.route("/api/hotspot/status", methods=["GET"])
-def api_hotspot_status():
-    return jsonify({"active": _hotspot_active})
 
-@app.route("/api/hotspot/toggle", methods=["POST"])
-def api_hotspot_toggle():
-    global _hotspot_active
-    _hotspot_active = not _hotspot_active
-    return jsonify({"active": _hotspot_active})
+@app.route("/api/ips/status", methods=["GET"])
+def api_ips_status():
+    return jsonify({"active": get_monitor_status()})
 
+@app.route("/api/ips/start", methods=["POST"])
+def api_ips_start():
+    start_monitor()
+    return jsonify({"status": "ok", "active": True})
 
-def api_start_autoscan():
+@app.route("/api/ips/stop", methods=["POST"])
+def api_ips_stop():
+    stop_monitor()
+    return jsonify({"status": "ok", "active": False})
+
+@app.route("/api/ips/configs", methods=["GET"])
+def api_ips_configs():
+    return jsonify(get_all_ips_configs())
+
+@app.route("/api/ips/config/<mac>", methods=["POST"])
+def api_set_ips_config(mac):
+    mac  = mac.upper()
     body = request.get_json(silent=True) or {}
-    interval = int(body.get("interval", 30))
-    network  = body.get("network", HOTSPOT_NETWORK)
-    start_auto_scan(network, interval)
-    return jsonify({"status": "ok", "interval": interval})
-
-@app.route("/api/autoscan/stop", methods=["POST"])
-def api_stop_autoscan():
-    stop_auto_scan()
+    set_ips_config(
+        mac,
+        body.get("max_rate_kbps",    1000.0),
+        body.get("min_rate_kbps",    10.0),
+        body.get("throttle_minutes", 5),
+        body.get("alert_email",      ""),
+        body.get("enabled",          1),
+    )
     return jsonify({"status": "ok"})
 
+@app.route("/api/ips/alerts", methods=["GET"])
+def api_ips_alerts():
+    limit = int(request.args.get("limit", 100))
+    return jsonify(get_alerts(limit))
+
+@app.route("/api/ips/alerts/<int:alert_id>", methods=["DELETE"])
+def api_delete_alert(alert_id):
+    delete_alert(alert_id)
+    return jsonify({"status": "ok"})
+
+@app.route("/api/ips/alerts/clear", methods=["POST"])
+def api_clear_alerts():
+    clear_alerts()
+    return jsonify({"status": "ok"})
+
+@app.route("/api/ips/settings", methods=["GET"])
+def api_ips_settings():
+    return jsonify(get_all_settings())
+
+@app.route("/api/ips/settings", methods=["POST"])
+def api_save_settings():
+    body = request.get_json(silent=True) or {}
+    # only alert_email is exposed in the UI; smtp creds are hardcoded in ips.py
+    for k in ("alert_email",):
+        if k in body:
+            set_setting(k, body[k])
+    return jsonify({"status": "ok"})
+
+@app.route("/api/logs/history/<mac>", methods=["GET"])
+def api_traffic_history(mac):
+    mac  = mac.upper()
+    days = int(request.args.get("days", 7))
+    return jsonify(get_traffic_history(mac, days))
+
+@app.route("/api/logs/history", methods=["DELETE"])
+def api_delete_history():
+    mac = request.args.get("mac")
+    if mac:
+        mac = mac.upper()
+    delete_history(mac)
+    return jsonify({"status": "ok"})
+
+
+@app.errorhandler(404)
+def not_found(e):
+    return redirect("/")
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    import threading, webbrowser
+    threading.Timer(1.0, lambda: webbrowser.open("http://localhost:5000")).start()
+    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)

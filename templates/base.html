@@ -8,42 +8,31 @@
 <style>
   body { background-color: #141417; color: #d8d8d8; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
 
-  .navbar { background-color: #1c1c20; border-bottom: 1px solid #2a2a2e; padding: 10px 24px; }
-  .navbar-brand { color: #fff; font-weight: 600; font-size: 18px; }
+  .navbar { background-color: #1c1c20; border-bottom: 1px solid #2a2a2e; padding: 8px 28px; }
+  .navbar-brand { color: #fff; font-weight: 600; font-size: 16px; }
   .navbar-brand span { color: #adb5bd; }
 
-  .nav-links { display: flex; gap: 4px; }
+  .nav-links { display: flex; gap: 2px; }
   .nav-link-item {
-    font-size: 13px; padding: 4px 12px; border-radius: 5px;
+    font-size: 13px; padding: 5px 14px; border-radius: 5px;
     color: #adb5bd; text-decoration: none;
   }
   .nav-link-item:hover { background: #2a2a2e; color: #d8d8d8; }
   .nav-link-item.active { background: #2a2a2e; color: #fff; }
 
-  .status-badge {
-    font-size: 12px; padding: 4px 10px; border-radius: 12px;
-    border: 1px solid #3a3a3f; color: #6c757d;
-  }
-  .status-badge.online { border-color: #3a7a3a; color: #6abf6a; }
-  .status-dot {
-    display: inline-block; width: 7px; height: 7px;
-    border-radius: 50%; background: currentColor; margin-right: 5px;
-  }
-
-  .page-title { font-size: 22px; font-weight: 600; color: #e8e8e8; margin-bottom: 2px; }
-  .page-sub   { font-size: 12px; color: #6c757d; font-family: monospace; }
+  .page-title { font-size: 20px; font-weight: 600; color: #e8e8e8; margin-bottom: 2px; }
 
   .card { border: 1px solid #2a2a2e !important; border-radius: 8px !important; background: #1c1c20 !important; box-shadow: none !important; }
   .card-header {
     background: #1c1c20 !important; border-bottom: 1px solid #2a2a2e !important;
-    padding: 12px 16px; font-weight: 600; color: #d8d8d8;
+    padding: 10px 16px; font-size: 13px; font-weight: 600; color: #d8d8d8;
     border-radius: 8px 8px 0 0 !important;
     display: flex; align-items: center; justify-content: space-between;
   }
 
   .form-label { font-size: 12px; font-weight: 500; color: #adb5bd; margin-bottom: 4px; }
   .form-control, .form-select {
-    font-size: 13px; border-radius: 6px;
+    font-size: 13px; border-radius: 6px; padding: 6px 10px;
     background: #141417 !important; border: 1px solid #2a2a2e !important; color: #d8d8d8 !important;
   }
   .form-control:focus, .form-select:focus { border-color: #555 !important; box-shadow: none !important; }
@@ -54,27 +43,27 @@
   .table thead th {
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: #6c757d; font-weight: 600; border-bottom: 1px solid #2a2a2e !important;
-    padding: 10px 14px; background: #1c1c20;
+    padding: 8px 14px; background: #1c1c20; white-space: nowrap;
   }
   .table tbody tr { background-color: #1c1c20; }
   .table tbody tr:hover { background-color: #222226; }
-  .table tbody td { padding: 10px 14px; vertical-align: middle; color: #d0d0d0; border-bottom: 1px solid #2a2a2e; background: transparent; }
+  .table tbody td { padding: 8px 14px; vertical-align: middle; color: #d0d0d0; border-bottom: 1px solid #2a2a2e; background: transparent; }
   .table tbody tr:last-child td { border-bottom: none; }
   .table-responsive { border-radius: 0 0 8px 8px; background: #1c1c20; }
 
-  .empty-state { text-align: center; padding: 48px; color: #555; background: #1c1c20; }
-  .empty-state .icon { font-size: 28px; margin-bottom: 8px; }
+  .empty-state { text-align: center; padding: 36px; color: #555; background: #1c1c20; }
+  .empty-state .icon { font-size: 24px; margin-bottom: 8px; }
 
   .btn-primary-dark {
     background: #2a2a2e; color: #d8d8d8; border: 1px solid #3a3a3f;
-    font-size: 13px; padding: 7px 16px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+    font-size: 13px; padding: 6px 14px; border-radius: 6px; cursor: pointer; white-space: nowrap;
   }
   .btn-primary-dark:hover { background: #333338; color: #fff; border-color: #555; }
   .btn-primary-dark:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .btn-sm-dark {
-    font-size: 11px; padding: 3px 10px; border-radius: 5px;
-    border: 1px solid #2a2a2e; background: #252528; color: #adb5bd; cursor: pointer;
+    font-size: 11px; padding: 3px 9px; border-radius: 5px;
+    border: 1px solid #2a2a2e; background: #252528; color: #adb5bd; cursor: pointer; white-space: nowrap;
   }
   .btn-sm-dark:hover { background: #2e2e33; color: #d8d8d8; border-color: #555; }
   .btn-sm-dark.danger { border-color: #7a2a2a; color: #c87070; }
@@ -85,20 +74,19 @@
   .btn-sm-dark.success:hover { background: #1a2e1a; }
 
   .ip-addr  { font-family: monospace; font-size: 12px; color: #7eb8d4; }
-  .mac-addr { font-family: monospace; font-size: 11px; color: #6c757d; }
 
   .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; }
   .toast { font-size: 13px; min-width: 220px; }
 
   .modal-content { background: #1c1c20 !important; border: 1px solid #2a2a2e !important; border-radius: 8px !important; }
-  .modal-header  { background: #1c1c20 !important; border-bottom: 1px solid #2a2a2e !important; color: #e0e0e0; border-radius: 8px 8px 0 0 !important; }
-  .modal-body    { background: #1c1c20 !important; }
-  .modal-footer  { background: #1c1c20 !important; border-top: 1px solid #2a2a2e !important; }
-  .modal-title   { font-size: 15px; font-weight: 600; color: #e0e0e0; }
+  .modal-header  { background: #1c1c20 !important; border-bottom: 1px solid #2a2a2e !important; color: #e0e0e0; border-radius: 8px 8px 0 0 !important; padding: 12px 16px; }
+  .modal-body    { background: #1c1c20 !important; padding: 16px; }
+  .modal-footer  { background: #1c1c20 !important; border-top: 1px solid #2a2a2e !important; padding: 10px 16px; }
+  .modal-title   { font-size: 14px; font-weight: 600; color: #e0e0e0; }
   .btn-close     { filter: invert(0.6); }
 
-  .btn-primary   { background-color: #2d5a8e !important; border-color: #2d5a8e !important; font-size: 13px; }
-  .btn-secondary { background-color: #2a2a2e !important; border-color: #3a3a3f !important; color: #adb5bd !important; font-size: 13px; }
+  .btn-primary   { background-color: #2d5a8e !important; border-color: #2d5a8e !important; font-size: 13px; padding: 5px 14px; }
+  .btn-secondary { background-color: #2a2a2e !important; border-color: #3a3a3f !important; color: #adb5bd !important; font-size: 13px; padding: 5px 14px; }
 
   @keyframes spin { to { transform: rotate(360deg); } }
   .spin { display: inline-block; animation: spin 0.7s linear infinite; }
@@ -109,18 +97,20 @@
 <body>
 
 <nav class="navbar mb-4">
-  <span class="navbar-brand">Smart<span>Router</span></span>
+  <span class="navbar-brand">Smart Router — <span>IoT Device Security</span></span>
   <div class="d-flex align-items-center gap-3">
     <div class="nav-links">
       <a href="/"         class="nav-link-item {% if active_page == 'devices' %}active{% endif %}">Devices</a>
       <a href="/capture"  class="nav-link-item {% if active_page == 'capture' %}active{% endif %}">Capture</a>
       <a href="/firewall" class="nav-link-item {% if active_page == 'firewall' %}active{% endif %}">Firewall</a>
+      <a href="/ips"      class="nav-link-item {% if active_page == 'ips' %}active{% endif %}">IPS</a>
+      <a href="/logs"     class="nav-link-item {% if active_page == 'logs' %}active{% endif %}">Logs</a>
     </div>
     {% block navbar_right %}{% endblock %}
   </div>
 </nav>
 
-<div class="container-fluid px-4" style="max-width: 1100px;">
+<div class="container-fluid px-4" style="max-width: 1400px;">
   {% block content %}{% endblock %}
 </div>
 
@@ -146,6 +136,52 @@ function showToast(msg, type='success') {
 
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+
+async function loadFiles() {
+  try {
+    const res   = await fetch('/api/capture/files');
+    const files = await res.json();
+    const tbody = document.getElementById('files-tbody');
+    if (!files.length) {
+      tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state">No PCAP files saved yet</div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = files.map(f => `<tr>
+      <td><span class="fname">${esc(f.filename)}</span></td>
+      <td style="font-family:monospace;font-size:12px;color:#adb5bd">${f.size_kb} KB</td>
+      <td style="font-family:monospace;font-size:11px;color:#d8d8d8">${f.modified}</td>
+      <td>
+        <div class="d-flex gap-1">
+          <a href="/api/capture/files/${esc(f.filename)}/download" class="btn-sm-dark" style="text-decoration:none">&#8595; Download</a>
+          <button class="btn-sm-dark danger" onclick="deleteFile('${esc(f.filename)}')">&#10005;</button>
+        </div>
+      </td>
+    </tr>`).join('');
+  } catch(e) {}
+}
+
+async function deleteFile(filename) {
+  if (!confirm(`Delete ${filename}?`)) return;
+  await fetch(`/api/capture/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  showToast('File deleted', 'success');
+  loadFiles();
+}
+
+async function deleteAllFiles() {
+  if (!confirm('Delete ALL PCAP files?')) return;
+  try {
+    const res   = await fetch('/api/capture/files');
+    const files = await res.json();
+
+    for (const f of files) {
+      await fetch(`/api/capture/files/${encodeURIComponent(f.filename)}`, { method: 'DELETE' });
+    }
+
+    showToast(`Deleted ${files.length} file(s)`, 'success');
+    loadFiles();
+  } catch(e) { showToast('Delete failed', 'danger'); }
 }
 </script>
 

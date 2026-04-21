@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% block title %}IPS{% endblock %}
+
+{% block extra_css %}
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-family: monospace; display: inline-block; }
+  .tag-active   { background: #1a2e1a; color: #6abf6a; border: 1px solid #2a5a2a; }
+  .tag-inactive { background: #2e1a1a; color: #c87070; border: 1px solid #5a2a2a; }
+  .tag-alert    { background: #2e2a1a; color: #c8a840; border: 1px solid #5a4a1a; }
+  .tag-enabled  { background: #1a2e1a; color: #6abf6a; border: 1px solid #2a5a2a; }
+  .tag-disabled { background: #252528; color: #666; border: 1px solid #2a2a2e; }
+  .status-row {
+    background: #1c1c20; border: 1px solid #2a2a2e; border-radius: 8px;
+    padding: 12px 16px; display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 16px;
+  }
+  .status-label { font-size: 13px; color: #adb5bd; }
+  .status-label strong { color: #d8d8d8; font-weight: 500; }
+  .rate-val { font-family: monospace; font-size: 12px; color: #7eb8d4; }
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-4">
+  <div class="page-title">Intrusion Prevention</div>
+</div>
+
+<div class="status-row">
+  <div class="status-label"><strong>Traffic Monitor</strong></div>
+  <div class="d-flex align-items-center gap-2" style="flex-shrink:0;">
+    <span id="monitor-badge" class="tag tag-inactive">Stopped</span>
+    <button class="btn-primary-dark" id="monitor-btn" onclick="toggleMonitor()" style="padding:6px 16px;">Start Monitor</button>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header"><span>Device Thresholds</span></div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>IPv4</th>
+          <th>Max Rate (kbps)</th>
+          <th>Min Rate (kbps)</th>
+          <th>Throttle (min)</th>
+          <th>Status</th>
+          <th style="width:80px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="config-tbody">
+        <tr><td colspan="7"><div class="empty-state">No devices — run a scan first</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">
+    <span>Recent Alerts</span>
+    <div class="d-flex gap-2 align-items-center">
+      <span id="alert-count" style="font-size:12px;font-weight:400;color:#555;"></span>
+      <button class="btn-sm-dark danger" onclick="clearAllAlerts()">Clear All</button>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>IPv4</th>
+          <th>Detected Rate</th>
+          <th>Threshold</th>
+          <th>Throttled Until</th>
+          <th>Time</th>
+          <th style="width:60px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="alerts-tbody">
+        <tr><td colspan="7"><div class="empty-state">No alerts recorded yet</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header"><span>Email Notification Settings</span></div>
+  <div style="padding:16px;">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Alert Email</label>
+        <input type="text" class="form-control" id="alert-email">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button class="btn-primary-dark w-100" onclick="saveEmailSettings()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="configModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="cfg-title-label"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="cfg-mac">
+        <div class="mb-3">
+          <label class="form-label">Max Data Rate (kbps)</label>
+          <input type="number" class="form-control" id="cfg-max-rate" min="1" step="1">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Min Data Rate (kbps)</label>
+          <input type="number" class="form-control" id="cfg-min-rate" min="1" step="1">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Throttle Duration (minutes)</label>
+          <input type="number" class="form-control" id="cfg-throttle" min="1" step="1">
+        </div>
+        <div class="mb-3 d-flex align-items-center gap-2">
+          <input type="checkbox" id="cfg-enabled" class="form-check-input" style="margin:0;">
+          <label class="form-label mb-0" for="cfg-enabled">Monitoring enabled for this device</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="saveConfig()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block page_script %}
+<script>
+var monitorActive = false;
+let configs = [];
+const cfgModal = new bootstrap.Modal(document.getElementById('configModal'));
+
+async function loadStatus() {
+  try {
+    const res  = await fetch('/api/ips/status');
+    const data = await res.json();
+    monitorActive = data.active;
+    updateMonitorUI();
+  } catch(e) {}
+}
+
+function updateMonitorUI() {
+  const badge = document.getElementById('monitor-badge');
+  const btn   = document.getElementById('monitor-btn');
+  if (monitorActive) {
+    badge.className   = 'tag tag-active';
+    badge.textContent = 'Running';
+    btn.textContent   = 'Stop Monitor';
+    btn.style.borderColor = '#7a2a2a';
+    btn.style.color       = '#c87070';
+  } else {
+    badge.className   = 'tag tag-inactive';
+    badge.textContent = 'Stopped';
+    btn.textContent   = 'Start Monitor';
+    btn.style.borderColor = '';
+    btn.style.color       = '';
+  }
+}
+
+async function toggleMonitor() {
+  let endpoint = monitorActive ? '/api/ips/stop' : '/api/ips/start';
+  try {
+    const res  = await fetch(endpoint, { method: 'POST' });
+    const data = await res.json();
+    monitorActive = data.active;
+    updateMonitorUI();
+    showToast(monitorActive ? 'Monitor started' : 'Monitor stopped', 'success');
+  } catch(e) { showToast('Request failed', 'danger'); }
+}
+
+async function loadConfigs() {
+  try {
+    const res = await fetch('/api/ips/configs');
+    configs   = await res.json();
+    renderConfigs(configs);
+  } catch(e) { showToast('Failed to load configs', 'danger'); }
+}
+
+function renderConfigs(rows) {
+  const tbody = document.getElementById('config-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state">No devices — run a scan first</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(d => {
+    const name     = d.name || '<span style="color:#555;font-style:italic;">Unnamed</span>';
+    const statusTag = d.enabled
+      ? `<span class="tag tag-enabled">on</span>`
+      : `<span class="tag tag-disabled">off</span>`;
+    return `<tr>
+      <td style="font-weight:500;color:#d8d8d8">${d.name ? esc(d.name) : '<span style="color:#555;font-style:italic;">Unnamed</span>'}</td>
+      <td><span class="ip-addr">${esc(d.ipv4 || '—')}</span></td>
+      <td><span class="rate-val">${d.max_rate_kbps}</span></td>
+      <td><span class="rate-val">${d.min_rate_kbps}</span></td>
+      <td style="font-family:monospace;font-size:12px;color:#d8d8d8">${d.throttle_minutes} min</td>
+      <td>${statusTag}</td>
+      <td><button class="btn-sm-dark" onclick="openConfig('${esc(d.mac)}')">&#9998; Edit</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function openConfig(mac) {
+  const d = configs.find(x => x.mac === mac);
+  if (!d) return;
+  document.getElementById('cfg-mac').value             = d.mac;
+  document.getElementById('cfg-title-label').textContent = d.name || d.mac;
+  document.getElementById('cfg-max-rate').value        = d.max_rate_kbps;
+  document.getElementById('cfg-min-rate').value        = d.min_rate_kbps;
+  document.getElementById('cfg-throttle').value        = d.throttle_minutes;
+  document.getElementById('cfg-enabled').checked       = !!d.enabled;
+  cfgModal.show();
+}
+
+async function saveConfig() {
+  const mac  = document.getElementById('cfg-mac').value;
+  const body = {
+    max_rate_kbps:    parseFloat(document.getElementById('cfg-max-rate').value)  || 1000,
+    min_rate_kbps:    parseFloat(document.getElementById('cfg-min-rate').value)  || 10,
+    throttle_minutes: parseInt(document.getElementById('cfg-throttle').value)    || 5,
+    enabled:          document.getElementById('cfg-enabled').checked ? 1 : 0,
+  };
+  try {
+    await fetch(`/api/ips/config/${encodeURIComponent(mac)}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    cfgModal.hide();
+    loadConfigs();
+    showToast('Config saved', 'success');
+  } catch(e) { showToast('Save failed', 'danger'); }
+}
+
+async function loadAlerts() {
+  try {
+    const res    = await fetch('/api/ips/alerts');
+    const alerts = await res.json();
+    renderAlerts(alerts);
+  } catch(e) {}
+}
+
+function renderAlerts(alerts) {
+  const tbody = document.getElementById('alerts-tbody');
+  document.getElementById('alert-count').textContent = alerts.length ? `${alerts.length} alert(s)` : '';
+  if (!alerts.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">No alerts recorded yet</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = alerts.map(a => {
+    const name  = a.device_name || a.ipv4 || a.mac;
+    const until = a.throttle_until ? a.throttle_until.replace('T', ' ') : '—';
+    const ts    = a.recorded_at   ? a.recorded_at.replace('T', ' ')    : '—';
+    return `<tr>
+      <td style="font-weight:500;color:#d8d8d8">${esc(name)}</td>
+      <td><span class="ip-addr">${esc(a.ipv4 || '—')}</span></td>
+      <td><span class="tag tag-alert">${a.rate_kbps} kbps</span></td>
+      <td style="font-family:monospace;font-size:12px;color:#d8d8d8">${a.threshold_kbps} kbps</td>
+      <td style="font-family:monospace;font-size:11px;color:#c8a840">${esc(until)}</td>
+      <td style="font-family:monospace;font-size:11px;color:#d8d8d8">${ts}</td>
+      <td><button class="btn-sm-dark danger" onclick="deleteAlert(${a.id})">&#10005;</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function deleteAlert(id) {
+  await fetch(`/api/ips/alerts/${id}`, { method: 'DELETE' });
+  loadAlerts();
+}
+
+async function clearAllAlerts() {
+  if (!confirm('Clear all alerts?')) return;
+  await fetch('/api/ips/alerts/clear', { method: 'POST' });
+  showToast('Alerts cleared', 'success');
+  loadAlerts();
+}
+
+async function loadEmailSettings() {
+  try {
+    const res      = await fetch('/api/ips/settings');
+    const settings = await res.json();
+    document.getElementById('alert-email').value = settings.alert_email || '';
+  } catch(e) {}
+}
+
+async function saveEmailSettings() {
+  const body = { alert_email: document.getElementById('alert-email').value.trim() };
+  try {
+    await fetch('/api/ips/settings', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    showToast('Settings saved', 'success');
+  } catch(e) { showToast('Save failed', 'danger'); }
+}
+
+loadStatus();
+loadConfigs();
+loadAlerts();
+loadEmailSettings();
+
+setInterval(() => { if (monitorActive) loadAlerts(); }, 10000);
+</script>
+{% endblock %}

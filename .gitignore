@@ -1,7 +1,6 @@
-modules/__pycache__/device_discovery.cpython-313.pyc
-smart_router.db
-templates/capture.html
-modules/__pycache__/packet_capture.cpython-313.pyc
-captures/capture_gureet_s_s25_ultra_mshome_net_20260419.pcap
-captures/capture_gureet_s_tab_a9_mshome_net_20260419.pcap
-modules/__pycache__/firewall.cpython-313.pyc
+__pycache__/
+*.pyc
+
+*.db
+
+captures/
