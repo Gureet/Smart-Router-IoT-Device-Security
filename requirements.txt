@@ -2,3 +2,4 @@ flask>=3.0
 scapy>=2.5
 requests>=2.31
 pydivert>=3.1.1
+python-dotenv>=1.0

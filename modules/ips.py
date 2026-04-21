@@ -1,10 +1,14 @@
+import os
 import sqlite3
 import threading
 import smtplib
 import time
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 from scapy.all import IP, sniff
+
+load_dotenv()
 
 DB_PATH       = "smart_router.db"
 HOTSPOT_IFACE = "Local Area Connection* 4"
@@ -203,8 +207,8 @@ def cleanup_old_records():
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
-SMTP_USER = "gureet2609@gmail.com"
-SMTP_PASS = "nnqh jnfr aqhl kcad"
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
 
 
 
@@ -396,7 +400,7 @@ def stop_monitor():
         stop_filter()
     except Exception as e:
         print("[IPS] could not stop firewall filter:", e)
-    print("[IPS] monitor disabled — firewall filter stopped")
+    print("[IPS] monitor disabled - firewall filter stopped")
 
 
 def get_monitor_status():
