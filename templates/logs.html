@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+
+{% block extra_css %}
+  /* chart container sizing */
+  .chart-wrap {
+    position: relative; height: 240px;
+    background: #141417; border-radius: 6px;
+    padding: 10px; border: 1px solid #2a2a2e;
+  }
+  .stat-box {
+    background: #141417; border: 1px solid #2a2a2e; border-radius: 6px;
+    padding: 10px 14px; text-align: center;
+  }
+  .stat-num { font-size: 20px; font-weight: 600; font-family: monospace; color: #7eb8d4; }
+  .stat-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #555; margin-top: 2px; }
+  .fname { font-family: monospace; font-size: 11px; color: #adb5bd; }
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-4">
+  <div class="page-title">Logs &amp; Monitoring</div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">
+    <span>Data Rate History</span>
+    <div class="d-flex gap-2 align-items-center">
+      <select class="form-select form-select-sm" id="sel-device" style="width:200px;" onchange="onDeviceChange()">
+        <option value="">Select device…</option>
+      </select>
+      <div class="d-flex align-items-center gap-1">
+        <input type="number" class="form-control form-control-sm" id="inp-days" value="7" min="1" max="365" style="width:60px;" onkeydown="if(event.key==='Enter' && currentMac) loadChart()">
+        <span style="font-size:12px;color:#adb5bd;">days</span>
+      </div>
+    </div>
+  </div>
+  <div style="padding:16px;">
+    <div class="row g-2 mb-3" id="stats-row" style="display:none;">
+      <div class="col-4">
+        <div class="stat-box">
+          <div class="stat-num" id="stat-avg">—</div>
+          <div class="stat-lbl">Avg Rate (kbps)</div>
+        </div>
+      </div>
+      <div class="col-4">
+        <div class="stat-box">
+          <div class="stat-num" id="stat-peak">—</div>
+          <div class="stat-lbl">Peak Rate (kbps)</div>
+        </div>
+      </div>
+      <div class="col-4">
+        <div class="stat-box">
+          <div class="stat-num" id="stat-samples">—</div>
+          <div class="stat-lbl">Samples</div>
+        </div>
+      </div>
+    </div>
+    <div class="chart-wrap" id="chart-wrap">
+      <div id="chart-placeholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:#555;font-size:13px;">
+        Select a device to view its traffic
+      </div>
+      <canvas id="rate-chart" style="display:none;"></canvas>
+    </div>
+    <div class="mt-3 d-flex gap-2">
+      <button class="btn-sm-dark danger" id="del-device-hist-btn" onclick="deleteDeviceHistory()" style="display:none;">
+        Delete History for This Device
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<div class="card">
+  <div class="card-header">
+    <span>Saved PCAP Files</span>
+    <div class="d-flex gap-2 align-items-center">
+      <button class="btn-sm-dark" onclick="loadFiles()">&#8635; Refresh</button>
+      <button class="btn-sm-dark danger" onclick="deleteAllFiles()">Delete All</button>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Filename</th>
+          <th>Size</th>
+          <th>Date</th>
+          <th style="width:140px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="files-tbody">
+        <tr><td colspan="4"><div class="empty-state">No PCAP files saved yet</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block page_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+let rateChart  = null;
+let devices    = [];
+let currentMac = null;
+
+async function loadDevices() {
+  try {
+    const res = await fetch('/api/devices');
+    devices   = await res.json();
+    const sel = document.getElementById('sel-device');
+    if (!devices.length) {
+      sel.innerHTML = '<option value="">No devices found</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">Select device…</option>' +
+      devices.map(d => {
+        const label = d.name ? `${d.name} (${d.ipv4})` : (d.ipv4 || d.mac);
+        return `<option value="${esc(d.mac)}">${esc(label)}</option>`;
+      }).join('');
+  } catch(e) {}
+}
+
+function onDeviceChange() {
+  const mac = document.getElementById('sel-device').value;
+  const btn = document.getElementById('del-device-hist-btn');
+  btn.style.display = mac ? '' : 'none';
+  currentMac = mac || null;
+  if (mac) loadChart();
+}
+
+async function loadChart() {
+  const mac  = document.getElementById('sel-device').value;
+  const days = document.getElementById('inp-days').value || 7;
+  if (!mac) return;
+
+  currentMac = mac;
+  document.getElementById('del-device-hist-btn').style.display = '';
+
+  try {
+    const res  = await fetch(`/api/logs/history/${encodeURIComponent(mac)}?days=${days}`);
+    const data = await res.json();
+    renderChart(data);
+  } catch(e) { showToast('Failed to load history', 'danger'); }
+}
+
+function destroyChart() {
+  if (rateChart) { rateChart.destroy(); rateChart = null; }
+  const canvas  = document.getElementById('rate-chart');
+  const ph      = document.getElementById('chart-placeholder');
+  const stats   = document.getElementById('stats-row');
+  canvas.style.display = 'none';
+  stats.style.display  = 'none';
+  ph.style.display     = 'flex';
+}
+
+function renderChart(rows) {
+  const placeholder = document.getElementById('chart-placeholder');
+  const canvas      = document.getElementById('rate-chart');
+  const statsRow    = document.getElementById('stats-row');
+
+  if (!rows.length) {
+    if (rateChart) { rateChart.destroy(); rateChart = null; }
+    canvas.style.display     = 'none';
+    statsRow.style.display   = 'none';
+    placeholder.style.display = 'flex';
+    placeholder.textContent  = 'Waiting for traffic data…';
+    return;
+  }
+
+  placeholder.style.display = 'none';
+  statsRow.style.display    = '';
+
+  // ensure canvas is visible and browser has recalculated layout before Chart.js measures it
+  if (canvas.style.display === 'none') {
+    canvas.style.display = 'block';
+    setTimeout(() => renderChart(rows), 50);
+    return;
+  }
+  canvas.style.display = 'block';
+
+  // downsample if theres too many points otherwise the chart gets slow
+  let samples = rows;
+  if (rows.length > 200) {
+    const step = Math.ceil(rows.length / 200);
+    samples = rows.filter((_, i) => i % step === 0);
+  }
+
+  const labels = samples.map(r => {
+    const d = new Date(r.recorded_at);
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  });
+  const values = samples.map(r => r.rate_kbps);
+
+  // calc avg and peak from all rows not just the sampled ones
+  const allRates = rows.map(r => r.rate_kbps);
+  const avg  = (allRates.reduce((a, b) => a + b, 0) / allRates.length).toFixed(1);
+  const peak = Math.max(...allRates).toFixed(1);
+  document.getElementById('stat-avg').textContent     = avg;
+  document.getElementById('stat-peak').textContent    = peak;
+  document.getElementById('stat-samples').textContent = rows.length;
+
+  if (rateChart) {
+    rateChart.data.labels            = labels;
+    rateChart.data.datasets[0].data  = values;
+    rateChart.update('none');
+    return;
+  }
+
+  rateChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels:   labels,
+      datasets: [{
+        label:           'Rate (kbps)',
+        data:            values,
+        borderColor:     '#7eb8d4',
+        backgroundColor: 'rgba(126, 184, 212, 0.08)',
+        borderWidth:     1.5,
+        pointRadius:     0,
+        fill:            true,
+        tension:         0.3,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1c1c20',
+          borderColor:     '#2a2a2e',
+          borderWidth:     1,
+          titleColor:      '#adb5bd',
+          bodyColor:       '#d8d8d8',
+          callbacks: {
+            label: ctx => ` ${ctx.parsed.y.toFixed(1)} kbps`
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#555', maxTicksLimit: 8, font: { size: 10 } },
+          grid:  { color: '#2a2a2e' }
+        },
+        y: {
+          ticks: { color: '#555', font: { size: 10 } },
+          grid:  { color: '#2a2a2e' },
+          title: { display: true, text: 'kbps', color: '#555', font: { size: 10 } }
+        }
+      }
+    }
+  });
+}
+
+// delete history for the selected device
+async function deleteDeviceHistory() {
+  if (!currentMac) return;
+  if (!confirm('Delete all traffic history for this device?')) return;
+  await fetch(`/api/logs/history?mac=${encodeURIComponent(currentMac)}`, { method: 'DELETE' });
+  showToast('History deleted', 'success');
+  destroyChart();
+}
+
+
+// page init
+loadDevices();
+loadFiles();
+setInterval(() => { if (currentMac) loadChart(); }, 5000);
+</script>
+{% endblock %}

@@ -10,8 +10,8 @@
   .tag-inactive { background: #2e1a1a; color: #c87070; border: 1px solid #5a2a2a; }
   .status-row {
     background: #1c1c20; border: 1px solid #2a2a2e; border-radius: 8px;
-    padding: 14px 16px; display: flex; align-items: center;
-    justify-content: space-between; margin-bottom: 20px;
+    padding: 12px 16px; display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 16px;
   }
   .status-label { font-size: 13px; color: #adb5bd; }
   .status-label strong { color: #d8d8d8; font-weight: 500; }
@@ -22,18 +22,12 @@
 
 <div class="mb-4">
   <div class="page-title">Firewall</div>
-  <div class="page-sub">Whitelist-based packet filtering using WinDivert (kernel-level)</div>
 </div>
 
 <div class="status-row">
   <div>
-    <div class="status-label">
-      <strong>Packet Filter</strong> — intercepts all forwarded hotspot traffic at kernel level.
-      Packets matching whitelist rules pass through. All others are dropped.
-    </div>
-    <div style="font-size:11px;color:#555;margin-top:4px;">
-      Tip: add a rule for DNS (port 53, UDP, any destination) to allow domain resolution.
-    </div>
+    <div class="status-label"><strong>Packet Filter</strong></div>
+    <div id="filter-error" style="display:none;font-size:11px;color:#c87070;margin-top:6px;font-family:monospace;"></div>
   </div>
   <div class="d-flex align-items-center gap-2" style="flex-shrink:0;">
     <span id="filter-badge" class="tag tag-inactive">Stopped</span>
@@ -51,11 +45,11 @@
       </div>
       <div class="col-md-2">
         <label class="form-label">Destination IP</label>
-        <input type="text" class="form-control" id="inp-dest-ip" placeholder="e.g. 8.8.8.8 or any">
+        <input type="text" class="form-control" id="inp-dest-ip">
       </div>
       <div class="col-md-2">
         <label class="form-label">Port</label>
-        <input type="text" class="form-control" id="inp-port" placeholder="e.g. 443 or any">
+        <input type="text" class="form-control" id="inp-port">
       </div>
       <div class="col-md-2">
         <label class="form-label">Protocol</label>
@@ -65,14 +59,7 @@
           <option value="ANY">ANY</option>
         </select>
       </div>
-      <div class="col-md-2">
-        <label class="form-label">Direction</label>
-        <select class="form-select" id="sel-direction">
-          <option value="out">Outbound</option>
-          <option value="in">Inbound</option>
-        </select>
-      </div>
-      <div class="col-md-2 d-flex align-items-end">
+      <div class="col-md-3 d-flex align-items-end">
         <button class="btn-primary-dark w-100" onclick="addRule()">+ Add Rule</button>
       </div>
     </div>
@@ -83,7 +70,7 @@
   <div class="card-header">
     <span>Whitelist Rules</span>
     <div class="d-flex gap-2 align-items-center">
-      <span id="rule-count" style="font-size:12px;font-weight:400;color:#555;"></span>
+      <span id="rule-count" style="font-size:12px;font-weight:400;color:#adb5bd;"></span>
       <button class="btn-sm-dark danger" onclick="cleanupAll()">Remove All</button>
     </div>
   </div>
@@ -95,14 +82,13 @@
           <th>Destination IP</th>
           <th>Port</th>
           <th>Protocol</th>
-          <th>Direction</th>
           <th>Status</th>
           <th>Created</th>
           <th style="width:100px">Actions</th>
         </tr>
       </thead>
       <tbody id="rules-tbody">
-        <tr><td colspan="8"><div class="empty-state">No rules yet — add one above</div></td></tr>
+        <tr><td colspan="7"><div class="empty-state">No rules yet — add one above</div></td></tr>
       </tbody>
     </table>
   </div>
@@ -113,45 +99,76 @@
 {% block page_script %}
 <script>
 let filterActive = false;
+let _pollTimer   = null;
 
-// load filter status
+// load filter status and show error if any
 async function loadFilterStatus() {
   try {
     const res  = await fetch('/api/firewall/filter/status');
     const data = await res.json();
     filterActive = data.active;
-    updateFilterUI();
+    updateFilterUI(data.error);
   } catch(e) {}
 }
 
-function updateFilterUI() {
-  const badge = document.getElementById('filter-badge');
-  const btn   = document.getElementById('filter-btn');
+function updateFilterUI(err) {
+  const badge   = document.getElementById('filter-badge');
+  const btn     = document.getElementById('filter-btn');
+  const errDiv  = document.getElementById('filter-error');
   if (filterActive) {
     badge.className   = 'tag tag-active';
     badge.textContent = 'Running';
     btn.textContent   = 'Stop Filter';
     btn.style.borderColor = '#7a2a2a';
     btn.style.color       = '#c87070';
+    if (errDiv) errDiv.style.display = 'none';
   } else {
     badge.className   = 'tag tag-inactive';
     badge.textContent = 'Stopped';
     btn.textContent   = 'Start Filter';
     btn.style.borderColor = '';
     btn.style.color       = '';
+    if (errDiv) {
+      if (err) {
+        errDiv.textContent  = 'Filter error: ' + err;
+        errDiv.style.display = '';
+      } else {
+        errDiv.style.display = 'none';
+      }
+    }
   }
 }
 
 async function toggleFilter() {
-  const endpoint = filterActive
-    ? '/api/firewall/filter/stop'
-    : '/api/firewall/filter/start';
+  if (filterActive) {
+    try {
+      await fetch('/api/firewall/filter/stop', { method: 'POST' });
+      filterActive = false;
+      updateFilterUI(null);
+      showToast('Packet filter stopped', 'success');
+      if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    } catch(e) { showToast('Request failed', 'danger'); }
+    return;
+  }
   try {
-    const res  = await fetch(endpoint, { method: 'POST' });
-    const data = await res.json();
-    filterActive = data.active;
-    updateFilterUI();
-    showToast(filterActive ? 'Packet filter started' : 'Packet filter stopped', 'success');
+    await fetch('/api/firewall/filter/start', { method: 'POST' });
+    filterActive = true;
+    updateFilterUI(null);
+    showToast('Packet filter started', 'success');
+    // poll a few times to catch a fast crash
+    let checks = 0;
+    _pollTimer = setInterval(async () => {
+      checks++;
+      const r = await fetch('/api/firewall/filter/status');
+      const d = await r.json();
+      if (!d.active) {
+        filterActive = false;
+        updateFilterUI(d.error);
+        if (d.error) showToast('Filter stopped: ' + d.error, 'danger');
+        clearInterval(_pollTimer); _pollTimer = null;
+      }
+      if (checks >= 6) { clearInterval(_pollTimer); _pollTimer = null; }
+    }, 1000);
   } catch(e) { showToast('Request failed', 'danger'); }
 }
 
@@ -176,22 +193,20 @@ async function loadRules() {
     const tbody = document.getElementById('rules-tbody');
     document.getElementById('rule-count').textContent = rules.length ? `${rules.length} rule(s)` : '';
     if (!rules.length) {
-      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state">No rules yet — add one above</div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">No rules yet — add one above</div></td></tr>`;
       return;
     }
     tbody.innerHTML = rules.map(r => {
       const statusTag   = r.enabled ? `<span class="tag tag-enabled">enabled</span>` : `<span class="tag tag-disabled">disabled</span>`;
       const toggleLabel = r.enabled ? 'Disable' : 'Enable';
       const created     = r.created_at ? r.created_at.replace('T', ' ') : '—';
-      const dirLabel    = r.direction === 'out' ? 'Outbound' : 'Inbound';
       return `<tr class="${r.enabled ? '' : 'disabled-row'}">
         <td><span class="ip-addr">${esc(r.device_ip)}</span></td>
         <td><span class="ip-addr">${esc(r.dest_ip)}</span></td>
         <td><span style="font-family:monospace;font-size:12px">${esc(r.dest_port)}</span></td>
         <td><span class="tag tag-proto">${esc(r.protocol)}</span></td>
-        <td style="font-size:12px;color:#adb5bd">${dirLabel}</td>
         <td>${statusTag}</td>
-        <td style="font-family:monospace;font-size:11px;color:#555">${created}</td>
+        <td style="font-family:monospace;font-size:11px;color:#d8d8d8">${created}</td>
         <td>
           <div class="d-flex gap-1">
             <button class="btn-sm-dark warn" onclick="toggleRule(${r.id})">${toggleLabel}</button>
@@ -209,13 +224,12 @@ async function addRule() {
   const dest_ip   = document.getElementById('inp-dest-ip').value.trim();
   const dest_port = document.getElementById('inp-port').value.trim() || 'any';
   const protocol  = document.getElementById('sel-protocol').value;
-  const direction = document.getElementById('sel-direction').value;
   if (!device_ip) { showToast('Select a device', 'warning'); return; }
   if (!dest_ip)   { showToast('Enter destination IP', 'warning'); return; }
   try {
     const res  = await fetch('/api/firewall/rules', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ device_ip, dest_ip, dest_port, protocol, direction })
+      body: JSON.stringify({ device_ip, dest_ip, dest_port, protocol })
     });
     const data = await res.json();
     if (data.status === 'ok') {
