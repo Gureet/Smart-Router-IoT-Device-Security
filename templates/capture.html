@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}Packet Capture{% endblock %}
+
+{% block extra_css %}
+  .status-pill { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-family: monospace; }
+  .status-running { background: #1a2e1a; color: #6abf6a; border: 1px solid #2a5a2a; }
+  .status-paused  { background: #2e2a1a; color: #c8a840; border: 1px solid #5a4a1a; }
+  .status-stopped { background: #252528; color: #888;    border: 1px solid #3a3a3f; }
+  .status-done    { background: #1a1a2e; color: #7eb8d4; border: 1px solid #2a3a5a; }
+  .status-error   { background: #2e1a1a; color: #c87070; border: 1px solid #5a2a2a; }
+
+  .fname { font-family: monospace; font-size: 11px; color: #adb5bd; }
+
+  .progress-bar-wrap { background: #252528; border-radius: 4px; height: 5px; margin-top: 4px; min-width: 80px; }
+  .progress-bar-fill { background: #4a9e4a; height: 5px; border-radius: 4px; transition: width .3s; }
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-4">
+  <div class="page-title">Packet Capture</div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">
+    <span>Start New Capture</span>
+    <button class="btn-sm-dark" onclick="loadDevices()">&#8635; Refresh</button>
+  </div>
+  <div style="padding:16px;">
+    <div class="mb-3">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <label class="form-label mb-0">Select Devices</label>
+        <button class="btn-sm-dark" onclick="toggleSelectAll()">Select All</button>
+      </div>
+      <div id="device-checklist" style="border:1px solid #2a2a2e;border-radius:6px;max-height:140px;overflow-y:auto;background:#141417;">
+        <div style="padding:12px;color:#555;font-size:13px;">Loading devices…</div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Stop Condition</label>
+        <select class="form-select" id="sel-stop" onchange="toggleStopInput()">
+          <option value="packets">Packet count</option>
+          <option value="duration">Duration (sec)</option>
+          <option value="manual">Manual stop</option>
+        </select>
+      </div>
+      <div class="col-md-2" id="stop-value-wrap">
+        <label class="form-label" id="stop-value-label">Packet count</label>
+        <input type="number" class="form-control" id="stop-value" value="100" min="1">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Filename</label>
+        <input type="text" class="form-control" id="inp-filename">
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button class="btn-primary-dark w-100" id="start-btn" onclick="startCapture()">
+          &#9654; Start Capture
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">
+    <span>Active Sessions</span>
+    <span id="session-count" style="font-size:12px;font-weight:400;color:#555;"></span>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>File</th>
+          <th>Status</th>
+          <th>Packets</th>
+          <th>Progress</th>
+          <th>Started</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="sessions-tbody">
+        <tr><td colspan="7"><div class="empty-state">No active capture sessions</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span>Saved PCAP Files</span>
+    <div class="d-flex gap-2">
+      <button class="btn-sm-dark" onclick="loadFiles()">&#8635; Refresh</button>
+      <button class="btn-sm-dark danger" onclick="deleteAllFiles()">Delete All</button>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Filename</th>
+          <th>Size</th>
+          <th>Date</th>
+          <th style="width:140px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="files-tbody">
+        <tr><td colspan="4"><div class="empty-state">No PCAP files saved yet</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block page_script %}
+<script>
+let devices = [];
+let pollInterval = null;
+let allSelected = false;
+
+// load devices into checklist
+async function loadDevices() {
+  try {
+    const res = await fetch('/api/devices');
+    devices = await res.json();
+    const list = document.getElementById('device-checklist');
+    if (!devices.length) {
+      list.innerHTML = '<div style="padding:12px;color:#555;font-size:13px;">No devices — run a scan first</div>';
+      return;
+    }
+    list.innerHTML = devices.map(d => {
+      const label = d.name || d.ipv4 || d.mac;
+      return `<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid #2a2a2e;">
+        <input type="checkbox" class="device-cb" value="${esc(d.mac)}" data-ip="${esc(d.ipv4)}" data-name="${esc(label)}" style="accent-color:#7eb8d4;">
+        <span style="font-size:13px;color:#d8d8d8">${esc(label)}</span>
+        <span class="ip-addr" style="font-size:11px">${esc(d.ipv4)}</span>
+      </label>`;
+    }).join('');
+    if (!document.getElementById('inp-filename').value) {
+      document.getElementById('inp-filename').value = 'capture';
+    }
+  } catch(e) { showToast('Failed to load devices', 'danger'); }
+}
+
+function toggleSelectAll() {
+  allSelected = !allSelected;
+  document.querySelectorAll('.device-cb').forEach(cb => cb.checked = allSelected);
+}
+
+// show/hide stop value input
+function toggleStopInput() {
+  const mode = document.getElementById('sel-stop').value;
+  const wrap  = document.getElementById('stop-value-wrap');
+  const label = document.getElementById('stop-value-label');
+  if (mode === 'manual') {
+    wrap.style.display = 'none';
+  } else {
+    wrap.style.display = '';
+    label.textContent = mode === 'packets' ? 'Packet count' : 'Duration (sec)';
+  }
+}
+
+// disable start button while any session is running or paused
+function updateStartBtn(sessions) {
+  const btn = document.getElementById('start-btn');
+  const busy = sessions.some(s => s.status === 'running' || s.status === 'paused');
+  btn.disabled = busy;
+  btn.textContent = busy ? 'Capture in Progress…' : '▶ Start Capture';
+}
+
+// start capture for all selected devices
+async function startCapture() {
+  const selected = [...document.querySelectorAll('.device-cb:checked')];
+  if (!selected.length) { showToast('Select at least one device', 'warning'); return; }
+
+  const prefix = document.getElementById('inp-filename').value.trim() || 'capture';
+  const mode   = document.getElementById('sel-stop').value;
+  const val    = parseInt(document.getElementById('stop-value').value) || null;
+  const ts     = new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
+
+  const requests = selected.map(cb => {
+    const mac      = cb.value;
+    const ip       = cb.dataset.ip;
+    const safeName = cb.dataset.name.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g,'_').toLowerCase();
+    const filename = `${prefix}_${safeName}_${ts}`;
+    const body     = { mac, ip, filename };
+    if (mode === 'packets')  body.max_packets  = val;
+    if (mode === 'duration') body.max_duration = val;
+    return fetch('/api/capture/start', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    }).then(r => r.json()).catch(() => ({ status: 'error' }));
+  });
+
+  const results = await Promise.all(requests);
+  const started = results.filter(d => d.status === 'ok').length;
+  if (started) {
+    showToast(`${started} capture(s) started`, 'success');
+    startPolling();
+  } else {
+    showToast('Failed to start captures', 'danger');
+  }
+}
+
+// poll active sessions
+function startPolling() {
+  if (pollInterval) return;
+  pollInterval = setInterval(loadSessions, 2000);
+  loadSessions();
+}
+
+async function loadSessions() {
+  try {
+    const res      = await fetch('/api/capture/sessions');
+    const sessions = await res.json();
+    renderSessions(sessions);
+    if (sessions.some(s => s.status === 'done' || s.status === 'stopped')) {
+      loadFiles();
+    }
+    if (sessions.every(s => ['done','stopped','error'].includes(s.status))) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  } catch(e) {}
+}
+
+// render active sessions
+function renderSessions(sessions) {
+  updateStartBtn(sessions);
+  const tbody = document.getElementById('sessions-tbody');
+  document.getElementById('session-count').textContent = sessions.length ? `${sessions.length} session(s)` : '';
+  if (!sessions.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">No active capture sessions</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = sessions.map(s => {
+    const statusHtml = `<span class="status-pill status-${s.status}">${s.status}</span>`;
+    const d = devices.find(x => x.mac === s.mac);
+    const deviceLabel = d ? (d.name || d.ipv4) : s.ip;
+
+    let progress = '';
+    if (s.max_packets) {
+      const pct = Math.min(100, Math.round((s.packets_captured / s.max_packets) * 100));
+      progress = `<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+                  <div style="font-size:10px;color:#adb5bd;margin-top:2px">${pct}%</div>`;
+    } else if (s.max_duration) {
+      progress = `<span style="font-size:11px;color:#adb5bd">timed</span>`;
+    } else {
+      progress = `<span style="font-size:11px;color:#adb5bd">manual</span>`;
+    }
+
+    let actions = '';
+    if (s.status === 'running') {
+      actions = `<button class="btn-sm-dark warn me-1" onclick="pauseSession('${s.session_id}')">&#9646;&#9646; Pause</button>
+                 <button class="btn-sm-dark danger" onclick="stopSession('${s.session_id}')">&#9632; Stop</button>`;
+    } else if (s.status === 'paused') {
+      actions = `<button class="btn-sm-dark success me-1" onclick="resumeSession('${s.session_id}')">&#9654; Resume</button>
+                 <button class="btn-sm-dark danger" onclick="stopSession('${s.session_id}')">&#9632; Stop</button>`;
+    } else {
+      actions = `<span style="font-size:11px;color:#adb5bd">—</span>`;
+    }
+
+    const startTime = s.start_time ? s.start_time.replace('T',' ') : '—';
+
+    return `<tr>
+      <td style="font-weight:500;font-size:13px;color:#d8d8d8">${esc(deviceLabel)}</td>
+      <td><span class="fname">${esc(s.filename)}</span></td>
+      <td>${statusHtml}${s.error ? `<div style="font-size:10px;color:#c87070;margin-top:2px">${esc(s.error)}</div>` : ''}</td>
+      <td style="font-family:monospace;font-size:13px;color:#d8d8d8">${s.packets_captured.toLocaleString()}${s.max_packets ? ' / '+s.max_packets : ''}</td>
+      <td>${progress}</td>
+      <td style="font-family:monospace;font-size:11px;color:#d8d8d8">${startTime}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+// session controls
+async function pauseSession(id) {
+  await fetch(`/api/capture/${id}/pause`, { method: 'POST' });
+  loadSessions();
+}
+async function resumeSession(id) {
+  await fetch(`/api/capture/${id}/resume`, { method: 'POST' });
+  startPolling();
+  loadSessions();
+}
+async function stopSession(id) {
+  await fetch(`/api/capture/${id}/stop`, { method: 'POST' });
+  setTimeout(() => { loadSessions(); loadFiles(); }, 800);
+}
+
+// page init
+loadDevices();
+loadFiles();
+loadSessions();
+startPolling();
+</script>
+{% endblock %}
