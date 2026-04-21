@@ -4,11 +4,12 @@ import time
 from datetime import datetime
 from scapy.all import sniff, PcapWriter
 
-CAPTURES_DIR = "captures"
+CAPTURES_DIR  = "captures"
 HOTSPOT_IFACE = "Local Area Connection* 4"
 
+# active sessions keyed by session_id
 _captures = {}
-_lock = threading.Lock()
+_lock     = threading.Lock()
 
 def _ensure_dir():
     os.makedirs(CAPTURES_DIR, exist_ok=True)
@@ -56,6 +57,7 @@ def _capture_loop(session_id: str):
     try:
         writer = PcapWriter(filepath, append=False, sync=True)
 
+        # scapy calls this to decide when to stop sniffing
         def _stop_filter(pkt):
             if stop_event.is_set():
                 return True
@@ -66,6 +68,7 @@ def _capture_loop(session_id: str):
             return False
 
         def _process(pkt):
+            # wait while paused, drop if stopped
             while pause_event.is_set() and not stop_event.is_set():
                 time.sleep(0.1)
             if stop_event.is_set():
@@ -74,13 +77,8 @@ def _capture_loop(session_id: str):
             with _lock:
                 state["packets_captured"] += 1
 
-        sniff(
-            filter=f"host {ip}",
-            prn=_process,
-            stop_filter=_stop_filter,
-            store=False,
-            iface=HOTSPOT_IFACE
-        )
+        sniff(filter=f"host {ip}", prn=_process, stop_filter=_stop_filter,
+              store=False, iface=HOTSPOT_IFACE)
         writer.close()
 
         with _lock:
@@ -128,24 +126,6 @@ def get_all_sessions() -> list[dict]:
             "start_time":       s["start_time"],
             "error":            s["error"],
         } for s in _captures.values()]
-
-def get_session(session_id: str) -> dict | None:
-    with _lock:
-        s = _captures.get(session_id)
-        if not s:
-            return None
-        return {
-            "session_id":       s["session_id"],
-            "mac":              s["mac"],
-            "ip":               s["ip"],
-            "filename":         s["filename"],
-            "status":           s["status"],
-            "packets_captured": s["packets_captured"],
-            "max_packets":      s["max_packets"],
-            "max_duration":     s["max_duration"],
-            "start_time":       s["start_time"],
-            "error":            s["error"],
-        }
 
 def list_pcap_files() -> list[dict]:
     _ensure_dir()
