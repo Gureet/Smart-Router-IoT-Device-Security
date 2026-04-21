@@ -1,4 +1,4 @@
-# Smart Router — IoT Device Security
+# Smart Router - IoT Device Security
 INSE 6170 · Concordia University
 
 A Flask web app that turns a Windows hotspot into an IoT security gateway. It monitors connected devices, captures their traffic, enforces firewall rules, and detects abnormal behaviour through a browser-based admin interface.
